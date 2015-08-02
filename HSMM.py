@@ -49,9 +49,54 @@ class CHSMM:
         self.durt_probs = np.random.rand(self.states_num, self.duration_max)
         self.durt_probs = normMatrix(self.durt_probs)
 
+    def generate(self, T):
+        def draw_from(probs):
+            return np.where(np.random.multinomial(1, probs) == 1)[0][0]
+
+        states = np.zeros(T)
+        observations = np.zeros(T)
 
 
-    def generate(self):
+    def viterbi(self, observations):
+        T = observations.shape[0]
 
+        log_trans_probs =  np.log(self.trans_probs)
+        log_emss_probs = np.log(self.emss_probs)
+        log_init_probs = np.log(self.init_probs)
+        log_durt_probs = np.log(self.durt_probs)
 
+        log_gamma = np.zeros((T,self.states_num))
+        log_gamma_star = np.zeros((T, self.states_num))
+        back = np.zeros((T, self.states_num))
+        back_star  = np.zeros((T, self.states_num))
 
+        log_gamma_star[0] = log_init_probs
+        for t in range(T-1):
+            dmax = np.min(self.duration_max, t+1)
+            a = log_gamma_star[t+1-dmax:t+1] + log_durt_probs[:dmax][::-1] + np.cumsum(log_emss_probs[t+1-dmax:t+1][::-1], axis=0)[::-1]
+            a = a[::-1]
+            log_gamma[t] = np.max(a, axis=0)
+            back[t] = np.argmax(a, axis=0)
+
+            a = log_gamma[t][:, np.newaxis] + log_trans_probs
+            log_gamma_star[t+1] = np.max(a, axis=0)
+            back_star[t+1] = np.argmax(a, axis=0)
+
+        t = T-1
+        dmax = np.min(self.duration_max, t+1)
+        a = log_gamma_star[t+1-dmax:t+1] + log_durt_probs[:dmax][::-1] + np.cumsum(log_emss_probs[t+1-dmax:t+1][::-1], axis=0)[::-1]
+        a = a[::-1]
+        log_gamma[t] = np.max(a, axis=0)
+        back[t] = np.argmax(a, axis=0)
+
+        #recover the sequence
+        t = T-1
+        seq = []
+        i = int(np.argmax(log_gamma[t]))
+        d = int(back[t, i])
+        while t >= 0:
+            seq.extend([i] * (d+1))
+            i = int(back_star[t-d, i])
+            t = t-d-1
+            d = int(back[t, i])
+        return np.array(list(reversed(seq))), log_gamma
